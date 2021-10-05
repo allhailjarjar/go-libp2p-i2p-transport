@@ -40,6 +40,8 @@ type Option func(*I2PTransport) error
 type TransportBuilderFunc = func(*tptu.Upgrader) (*I2PTransport, error)
 
 //returns a function that when called by go-libp2p, creates an I2PTransport
+//Initializes SAM sessions/tunnel which can take about 4-25 seconds depending
+//on i2p network conditions
 func I2PTransportBuilder(sam *sam3.SAM,
 	i2pKeys i2pkeys.I2PKeys, opts ...Option) (TransportBuilderFunc, error) {
 
@@ -91,7 +93,7 @@ func (i2p *I2PTransport) Dial(ctx context.Context, remoteAddress ma.Multiaddr, p
 		return nil, errorx.IllegalArgument.New(fmt.Sprintf("Can't dial \"%s\"", remoteAddress))
 	}
 
-	remoteNetAddr, err := multiAddrToNetAddr(remoteAddress)
+	remoteNetAddr, err := multiAddrToI2PAddr(remoteAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -114,8 +116,22 @@ func (i2p *I2PTransport) Dial(ctx context.Context, remoteAddress ma.Multiaddr, p
 	return i2p.Upgrader.UpgradeOutbound(ctx, i2p, outboundConnection, peerID)
 }
 
-func (i2p *I2PTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
-	return nil, nil
+//localAdd isn't used because we'll be listening on whichever destination is provided
+//by i2p
+func (i2p *I2PTransport) Listen(localAdd ma.Multiaddr) (transport.Listener, error) {
+	//create listener
+	streamListener, err := i2p.outboundSession.Listen()
+	if err != nil {
+		return nil, errorx.Decorate(err, "Unable to call listen on SAM session")
+	}
+
+	listener, err := NewTransportListener(streamListener)
+	if err != nil {
+		return nil, errorx.Decorate(err, "Failed to nitialize transport listener")
+	}
+
+	//return upgraded listener
+	return i2p.Upgrader.UpgradeListener(i2p, listener), nil
 }
 
 //Closes all SAM sessions by closing the PRIMARY session

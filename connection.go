@@ -6,8 +6,19 @@ import (
 
 	"github.com/joomcode/errorx"
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
+
+type netAddr struct {
+	str string
+}
+
+func (n *netAddr) String() string {
+	return ""
+}
+
+func (n *netAddr) Network() string {
+	return "I2P"
+}
 
 // ConnWithoutAddr is a net.Conn like but without LocalAddr and RemoteAddr.
 type ConnWithoutAddr interface {
@@ -19,9 +30,7 @@ type ConnWithoutAddr interface {
 	SetWriteDeadline(t time.Time) error
 }
 
-type ListenConnection struct {
-}
-
+//This struct only exists to satify libp2p interfaces
 type Connection struct {
 	ConnWithoutAddr
 
@@ -30,16 +39,15 @@ type Connection struct {
 
 	localNetAddr  net.Addr
 	remoteNetAddr net.Addr
-	//todo: add listener
 }
 
-func NewConnection(conn ConnWithoutAddr, localAddr, remoteAddr ma.Multiaddr /*add listener here*/) (*Connection, error) {
-	localNetAddr, err := manet.ToNetAddr(localAddr)
+func NewConnection(conn ConnWithoutAddr, localAddr, remoteAddr ma.Multiaddr) (*Connection, error) {
+	localNetAddrStr, err := multiAddrToI2PAddr(localAddr) //manet.ToNetAddr(localAddr)
 	if err != nil {
 		return nil, errorx.Decorate(err, "Failed to convert MultiAddr to NetAddr")
 	}
 
-	remoteNetAddr, err := manet.ToNetAddr(remoteAddr)
+	remoteNetAddrStr, err := multiAddrToI2PAddr(remoteAddr) //manet.ToNetAddr(remoteAddr)
 	if err != nil {
 		return nil, errorx.Decorate(err, "Failed to convert MultiAddr to NetAddr")
 	}
@@ -48,13 +56,12 @@ func NewConnection(conn ConnWithoutAddr, localAddr, remoteAddr ma.Multiaddr /*ad
 		ConnWithoutAddr: conn,
 		localAddr:       localAddr,
 		remoteAddr:      remoteAddr,
-		localNetAddr:    localNetAddr,
-		remoteNetAddr:   remoteNetAddr,
+		localNetAddr:    &netAddr{localNetAddrStr},
+		remoteNetAddr:   &netAddr{remoteNetAddrStr},
 	}, nil
 }
 
-//I don't think these are used anywhere, so we'll just stub them out
-//They aren't very meaningful
+//I don't think these are used anywhere.. but must match the interface
 func (c *Connection) LocalAddr() net.Addr {
 	return c.localNetAddr
 }

@@ -12,4 +12,5 @@ require (
 	github.com/multiformats/go-multiaddr v0.4.1
 	github.com/multiformats/go-multiaddr-fmt v0.1.0
 	github.com/multiformats/go-multiaddr-net v0.2.0
+	github.com/stretchr/testify v1.7.0
 )
