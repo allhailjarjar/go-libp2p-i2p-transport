@@ -7,13 +7,22 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func multiAddrToI2PAddr(addr ma.Multiaddr) (string, error) {
+func MultiAddrToI2PAddr(addr ma.Multiaddr) (string, error) {
 	numProtocols := len(addr.Protocols())
 	if numProtocols != 1 {
 		return "", errors.New(fmt.Sprintf("Expected 1 protocols in multiaddr but found %d", numProtocols))
 	}
 
-	return addr.ValueForProtocol(addr.Protocols()[0].Code)
+	destination, err := addr.ValueForProtocol(addr.Protocols()[0].Code)
+	if err != nil {
+		return "", err
+	}
+
+	if len(destination) <= 55 {
+		destination += ".b32.i2p"
+	}
+
+	return destination, nil
 }
 
 //expects either a base32 or base64 i2p destination

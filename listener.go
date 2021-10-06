@@ -20,7 +20,7 @@ type TransportListener struct {
 func NewTransportListener(streamListener *sam3.StreamListener) (*TransportListener, error) {
 	multiAddr, err := I2PAddrToMultiAddr(streamListener.Addr().String())
 	if err != nil {
-		return nil, err
+		return nil, errorx.Decorate(err, "Failed to create MultiAddr from i2p")
 	}
 
 	return &TransportListener{

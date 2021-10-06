@@ -3,22 +3,20 @@ package i2p
 import (
 	"context"
 	"fmt"
-	"sync"
+	"math/rand"
+	"strconv"
 
 	"github.com/eyedeekay/sam3/i2pkeys"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/joomcode/errorx"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/transport"
 	tptu "github.com/libp2p/go-libp2p-transport-upgrader"
 	ma "github.com/multiformats/go-multiaddr"
 	mafmt "github.com/multiformats/go-multiaddr-fmt"
-	manet "github.com/multiformats/go-multiaddr/net"
 
 	"github.com/eyedeekay/sam3"
 )
-
-var log = logging.Logger("i2p-tpt")
 
 type I2PTransport struct {
 	// Connection upgrader for upgrading insecure stream connections to
@@ -30,7 +28,7 @@ type I2PTransport struct {
 	primarySession  *sam3.PrimarySession
 	outboundSession *sam3.StreamSession
 	inboundSession  *sam3.StreamSession
-	sync.RWMutex
+	//sync.RWMutex
 }
 
 var _ transport.Transport = &I2PTransport{}
@@ -43,21 +41,29 @@ type TransportBuilderFunc = func(*tptu.Upgrader) (*I2PTransport, error)
 //Initializes SAM sessions/tunnel which can take about 4-25 seconds depending
 //on i2p network conditions
 func I2PTransportBuilder(sam *sam3.SAM,
-	i2pKeys i2pkeys.I2PKeys, opts ...Option) (TransportBuilderFunc, error) {
+	i2pKeys i2pkeys.I2PKeys, outboundPort string, rngSeed int) (TransportBuilderFunc, ma.Multiaddr, error) {
+	rand.Seed(int64(rngSeed))
 
-	samPrimarySession, err := sam.NewPrimarySession("primarySession", i2pKeys, sam3.Options_Default)
+	randSessionSuffix := strconv.Itoa(rand.Int())
+
+	samPrimarySession, err := sam.NewPrimarySession("primarySession-"+randSessionSuffix, i2pKeys, sam3.Options_Default)
 	if err != nil {
-		return nil, errorx.Decorate(err, "Failed to create Primary session with I2P SAM")
+		return nil, nil, errorx.Decorate(err, "Failed to create Primary session with I2P SAM")
 	}
 
-	outboundSession, err := samPrimarySession.NewStreamSubSession("outboundSession")
+	inboundSession, err := samPrimarySession.NewStreamSubSession("inboundSession-" + randSessionSuffix)
 	if err != nil {
-		return nil, errorx.Decorate(err, "Failed to create outbound subsession with I2P SAM")
+		return nil, nil, errorx.Decorate(err, "Failed to create inboundSession subsession with I2P SAM")
 	}
 
-	inboundSession, err := samPrimarySession.NewStreamSubSession("inboundSession")
+	outboundSession, err := samPrimarySession.NewStreamSubSessionWithPorts("outboundSession-"+randSessionSuffix, outboundPort, "0")
 	if err != nil {
-		return nil, errorx.Decorate(err, "Failed to create inboundSession subsession with I2P SAM")
+		return nil, nil, errorx.Decorate(err, "Failed to create outbound subsession with I2P SAM")
+	}
+
+	i2pDestination, err := I2PAddrToMultiAddr(string(samPrimarySession.Addr()))
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return func(upgrader *tptu.Upgrader) (*I2PTransport, error) {
@@ -69,18 +75,15 @@ func I2PTransportBuilder(sam *sam3.SAM,
 			outboundSession: outboundSession,
 			inboundSession:  inboundSession,
 		}
-
-		for _, o := range opts {
-			if err := o(i2p); err != nil {
-				return nil, err
-			}
-		}
 		return i2p, nil
 
-	}, nil
+	}, i2pDestination, nil
 }
 
-var dialMatcher = mafmt.Base(ma.P_GARLIC64)
+var dialMatcher = mafmt.Or(
+	mafmt.Base(ma.P_GARLIC64),
+	mafmt.Base(ma.P_GARLIC32),
+)
 
 // CanDial returns true if this transport believes it can dial the given multiaddr.
 func (i2p *I2PTransport) CanDial(addr ma.Multiaddr) bool {
@@ -93,17 +96,17 @@ func (i2p *I2PTransport) Dial(ctx context.Context, remoteAddress ma.Multiaddr, p
 		return nil, errorx.IllegalArgument.New(fmt.Sprintf("Can't dial \"%s\"", remoteAddress))
 	}
 
-	remoteNetAddr, err := multiAddrToI2PAddr(remoteAddress)
+	remoteNetAddr, err := MultiAddrToI2PAddr(remoteAddress)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := i2p.outboundSession.DialContext(ctx, "tcp", remoteNetAddr)
+	conn, err := i2p.outboundSession.DialI2P(i2pkeys.I2PAddr(remoteNetAddr))
 	if err != nil {
 		return nil, errorx.Decorate(err, "Failed to dial remote address")
 	}
 
-	localAddress, err := manet.FromNetAddr(i2p.outboundSession.LocalAddr())
+	localAddress, err := I2PAddrToMultiAddr(i2p.outboundSession.LocalAddr().String()) //manet.FromNetAddr(i2p.outboundSession.LocalAddr())
 	if err != nil {
 		return nil, errorx.Decorate(err, "Unable to constuct multi-addr from net address")
 	}
@@ -113,13 +116,13 @@ func (i2p *I2PTransport) Dial(ctx context.Context, remoteAddress ma.Multiaddr, p
 		return nil, errorx.Decorate(err, "Failed to construct Connection type")
 	}
 
-	return i2p.Upgrader.UpgradeOutbound(ctx, i2p, outboundConnection, peerID)
+	return i2p.Upgrader.Upgrade(ctx, i2p, outboundConnection, network.DirOutbound, peerID)
+	//return i2p.Upgrader.UpgradeOutbound(ctx, i2p, outboundConnection, peerID)
 }
 
-//localAdd isn't used because we'll be listening on whichever destination is provided
+//input argument isn't used because we'll be listening on whichever destination is provided
 //by i2p
-func (i2p *I2PTransport) Listen(localAdd ma.Multiaddr) (transport.Listener, error) {
-	//create listener
+func (i2p *I2PTransport) Listen(_ ma.Multiaddr) (transport.Listener, error) {
 	streamListener, err := i2p.outboundSession.Listen()
 	if err != nil {
 		return nil, errorx.Decorate(err, "Unable to call listen on SAM session")
@@ -130,7 +133,6 @@ func (i2p *I2PTransport) Listen(localAdd ma.Multiaddr) (transport.Listener, erro
 		return nil, errorx.Decorate(err, "Failed to nitialize transport listener")
 	}
 
-	//return upgraded listener
 	return i2p.Upgrader.UpgradeListener(i2p, listener), nil
 }
 
@@ -139,9 +141,9 @@ func (i2p *I2PTransport) Close() {
 	i2p.primarySession.Close()
 }
 
-// Protocols returns the list of terminal protocols this transport can dial.
+// Protocols returns the list of protocols this transport can dial.
 func (i2p *I2PTransport) Protocols() []int {
-	return []int{ma.P_GARLIC64}
+	return []int{ma.P_GARLIC64, ma.P_GARLIC32, ma.P_TCP}
 }
 
 // Proxy always returns false for the I2P transport.

@@ -25,18 +25,18 @@ func TestNetAddrToGarlic64MultiAddr(t *testing.T) {
 
 }
 
-func TestMultiAddrToNetAddr(t *testing.T) {
+func TestMultiAddrToI2PAddr(t *testing.T) {
 	multiAddrB32, err := I2PAddrToMultiAddr(base32Addr)
 	assert.NoError(t, err)
 
-	addr, err := multiAddrToNetAddr(multiAddrB32)
+	addr, err := MultiAddrToI2PAddr(multiAddrB32)
 	assert.NoError(t, err)
-	assert.Equal(t, base32Addr, addr)
+	assert.Equal(t, base32AddrSuffix, addr)
 
 	multiAddrB64, err := I2PAddrToMultiAddr(base64Addr)
 	assert.NoError(t, err)
 
-	addr2, err := multiAddrToNetAddr(multiAddrB64)
+	addr2, err := MultiAddrToI2PAddr(multiAddrB64)
 	assert.NoError(t, err)
 	assert.Equal(t, base64Addr, addr2)
 

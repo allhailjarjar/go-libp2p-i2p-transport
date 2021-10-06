@@ -42,12 +42,12 @@ type Connection struct {
 }
 
 func NewConnection(conn ConnWithoutAddr, localAddr, remoteAddr ma.Multiaddr) (*Connection, error) {
-	localNetAddrStr, err := multiAddrToI2PAddr(localAddr) //manet.ToNetAddr(localAddr)
+	localNetAddrStr, err := MultiAddrToI2PAddr(localAddr) //manet.ToNetAddr(localAddr)
 	if err != nil {
 		return nil, errorx.Decorate(err, "Failed to convert MultiAddr to NetAddr")
 	}
 
-	remoteNetAddrStr, err := multiAddrToI2PAddr(remoteAddr) //manet.ToNetAddr(remoteAddr)
+	remoteNetAddrStr, err := MultiAddrToI2PAddr(remoteAddr) //manet.ToNetAddr(remoteAddr)
 	if err != nil {
 		return nil, errorx.Decorate(err, "Failed to convert MultiAddr to NetAddr")
 	}
