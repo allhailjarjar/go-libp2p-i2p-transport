@@ -61,7 +61,7 @@ func I2PTransportBuilder(sam *sam3.SAM,
 		return nil, nil, errorx.Decorate(err, "Failed to create outbound subsession with I2P SAM")
 	}
 
-	i2pDestination, err := I2PAddrToMultiAddr(string(samPrimarySession.Addr()))
+	i2pDestination, err := I2PAddrToMultiAddr(samPrimarySession.Addr().String())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -123,14 +123,14 @@ func (i2p *I2PTransport) Dial(ctx context.Context, remoteAddress ma.Multiaddr, p
 //input argument isn't used because we'll be listening on whichever destination is provided
 //by i2p
 func (i2p *I2PTransport) Listen(_ ma.Multiaddr) (transport.Listener, error) {
-	streamListener, err := i2p.outboundSession.Listen()
+	streamListener, err := i2p.inboundSession.Listen()
 	if err != nil {
 		return nil, errorx.Decorate(err, "Unable to call listen on SAM session")
 	}
 
 	listener, err := NewTransportListener(streamListener)
 	if err != nil {
-		return nil, errorx.Decorate(err, "Failed to nitialize transport listener")
+		return nil, errorx.Decorate(err, "Failed to initialize transport listener")
 	}
 
 	return i2p.Upgrader.UpgradeListener(i2p, listener), nil
