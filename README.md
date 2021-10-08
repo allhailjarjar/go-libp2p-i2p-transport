@@ -7,5 +7,5 @@ Look at transport_test.go for example usage
 
 Open to contribution sand bug reports
 
-##License
+## License
 this library is released as public-domain. Do whatever you want with it
